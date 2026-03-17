@@ -4,7 +4,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .analyze import extract_transcript_placeholder, extract_visual_signals
+from .analyze import AnalysisContractError, run_analysis
 from .compose import ComposeError, ComposeRequest, compose_content
 from .config import PLATFORM_PRESETS
 from .ingest import IngestError, collect_metadata
@@ -22,6 +22,7 @@ class VideoCaptionStudioApp:
 
         self.video_path_var = tk.StringVar()
         self.platform_var = tk.StringVar(value="tiktok")
+        self.allow_fallback_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready.")
 
         self._build_ui()
@@ -80,7 +81,13 @@ class VideoCaptionStudioApp:
         )
         platform_menu.grid(row=3, column=0, sticky="w")
 
-        ttk.Button(top, text="Generate", command=self._generate).grid(row=3, column=1, sticky="e")
+        ttk.Checkbutton(
+            top,
+            text="Allow fallback generation (less accurate)",
+            variable=self.allow_fallback_var,
+        ).grid(row=4, column=0, sticky="w", pady=(10, 0))
+
+        ttk.Button(top, text="Generate", command=self._generate).grid(row=4, column=1, sticky="e")
         top.columnconfigure(0, weight=1)
 
         output = ttk.LabelFrame(frame, text="Generated Output", padding=10)
@@ -123,13 +130,14 @@ class VideoCaptionStudioApp:
             messagebox.showwarning("Missing input", "Please choose a video first.")
             return
 
+        strict_mode = not self.allow_fallback_var.get()
+
         self.status_var.set("Generating...")
         self.root.update_idletasks()
 
         try:
             metadata = collect_metadata(video_path)
-            analysis = extract_visual_signals(video_path)
-            analysis.transcript = extract_transcript_placeholder(video_path)
+            analysis = run_analysis(video_path, metadata=metadata, strict_mode=strict_mode)
 
             content = compose_content(
                 ComposeRequest(
@@ -143,11 +151,21 @@ class VideoCaptionStudioApp:
             self._set_text(self.caption_text, content.caption)
             self._set_text(self.hashtags_text, content.hashtags)
 
-            self._log(f"Metadata source: {metadata.source}; tags={analysis.visual_tags or ['none']}")
-            if analysis.notes:
-                for note in analysis.notes:
-                    self._log(note)
+            report = analysis.report
+            if report:
+                self._log(
+                    "Analysis summary: "
+                    f"metadata={report.metadata_source}, visual={report.visual_source}, transcript={report.transcript_source}"
+                )
+                for warning in report.warnings:
+                    self._log(f"Warning: {warning}")
+                for error in report.errors:
+                    self._log(f"Error: {error}")
             self.status_var.set("Done.")
+        except AnalysisContractError as exc:
+            self.status_var.set("Failed.")
+            messagebox.showerror("Analysis requirements not met", str(exc))
+            self._log(f"Analysis error: {exc}")
         except IngestError as exc:
             self.status_var.set("Failed.")
             messagebox.showerror("Ingest error", str(exc))

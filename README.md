@@ -15,22 +15,23 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
   - YouTube Shorts
 - Ingest layer:
   - validates file path + extension
-  - attempts metadata with `ffprobe` when available
-  - falls back gracefully when `ffprobe` is unavailable
+  - uses `ffprobe` for metadata (with fallback when unavailable)
+  - detects whether audio track exists (when `ffprobe` is available)
 - Analyze layer:
   - frame sampling plan helper
-  - lightweight OpenCV visual tags when available
-  - graceful fallback when OpenCV is unavailable
-  - transcript placeholder hook (returns empty transcript for now)
+  - OpenCV visual analysis (when available)
+  - optional local transcript extraction via `faster-whisper`
+  - structured analysis report with real source attribution
 - Compose layer:
   - provider interface contract
   - local heuristic provider for offline generation
 - GUI:
   - file picker
   - platform selector
-  - Generate button
+  - **strict mode by default** (fallback disabled unless user enables it)
+  - fallback toggle: `Allow fallback generation (less accurate)`
   - output fields + copy buttons
-  - status log
+  - status log with analysis source summary
 
 ## Project Layout
 
@@ -73,6 +74,43 @@ The script will:
 2. create `.venv` if needed
 3. install requirements
 4. launch the app
+
+## v1.1 Strict Analysis Mode (default)
+
+v1.1 enables strict, grounded analysis by default.
+
+- Generate will **fail** with actionable guidance if required analysis cannot run.
+- Strict mode requires:
+  - `metadata_source=ffprobe`
+  - `visual_source=opencv`
+  - `transcript_source=whisper` when audio is present/unknown
+  - OR explicit no-audio detection from `ffprobe`
+- To allow best-effort generation, enable:
+  - `Allow fallback generation (less accurate)` in the GUI
+
+Status log now reports what actually ran, for example:
+- `metadata=ffprobe, visual=opencv, transcript=whisper`
+- warnings/errors from runtime dependency checks
+
+## Windows dependency notes (v1.1)
+
+### Required for strict mode
+
+1. Install FFmpeg (includes `ffprobe`):
+   - Download: https://ffmpeg.org/download.html
+   - Ensure `ffprobe.exe` is on your `PATH`
+2. Install Python packages:
+   ```bat
+   pip install opencv-python
+   ```
+
+### Optional (transcript capability)
+
+```bat
+pip install faster-whisper
+```
+
+Without `faster-whisper`, strict mode can still pass only when `ffprobe` confirms there is no audio track.
 
 ## Build Windows EXE (PyInstaller)
 

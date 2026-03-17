@@ -24,6 +24,7 @@ class VideoMetadata:
     width: Optional[int] = None
     height: Optional[int] = None
     fps: Optional[float] = None
+    has_audio: Optional[bool] = None
     source: str = "fallback"
 
 
@@ -36,6 +37,10 @@ def validate_video_path(video_path: str) -> Path:
             f"Unsupported extension '{path.suffix}'. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
     return path
+
+
+def ffprobe_available() -> bool:
+    return shutil.which("ffprobe") is not None
 
 
 def _parse_fps(value: Optional[str]) -> Optional[float]:
@@ -55,7 +60,7 @@ def _parse_fps(value: Optional[str]) -> Optional[float]:
 
 
 def _ffprobe_metadata(path: Path) -> Optional[VideoMetadata]:
-    if not shutil.which("ffprobe"):
+    if not ffprobe_available():
         return None
 
     command = [
@@ -77,6 +82,7 @@ def _ffprobe_metadata(path: Path) -> Optional[VideoMetadata]:
 
     streams = payload.get("streams", [])
     vstream = next((s for s in streams if s.get("codec_type") == "video"), {})
+    has_audio = any(s.get("codec_type") == "audio" for s in streams)
     fmt = payload.get("format", {})
 
     try:
@@ -93,6 +99,7 @@ def _ffprobe_metadata(path: Path) -> Optional[VideoMetadata]:
         width=vstream.get("width"),
         height=vstream.get("height"),
         fps=_parse_fps(vstream.get("r_frame_rate")),
+        has_audio=has_audio,
         source="ffprobe",
     )
 
