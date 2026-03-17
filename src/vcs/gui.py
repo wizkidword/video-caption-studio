@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from .analyze import extract_transcript_placeholder, extract_visual_signals
-from .compose import ComposeRequest, compose_content
+from .compose import ComposeError, ComposeRequest, compose_content
 from .config import PLATFORM_PRESETS
 from .ingest import IngestError, collect_metadata
 
@@ -114,6 +114,10 @@ class VideoCaptionStudioApp:
             self.status_var.set("Failed.")
             messagebox.showerror("Ingest error", str(exc))
             self._log(f"Error: {exc}")
+        except ComposeError as exc:
+            self.status_var.set("Failed.")
+            messagebox.showerror("Compose error", str(exc))
+            self._log(f"Compose error: {exc}")
         except Exception as exc:  # pragma: no cover - UI safety
             self.status_var.set("Failed.")
             messagebox.showerror("Unexpected error", str(exc))

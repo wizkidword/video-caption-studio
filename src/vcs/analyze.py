@@ -20,6 +20,8 @@ class AnalysisResult:
 def build_frame_sampling_plan(total_frames: int, max_samples: int = 8) -> List[int]:
     if total_frames <= 0 or max_samples <= 0:
         return []
+    if max_samples == 1:
+        return [0]
     if total_frames <= max_samples:
         return list(range(total_frames))
 
