@@ -6,7 +6,7 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
 - future **online AI providers** (provider-pluggable compose layer)
 - future **batch processing** (analysis/compose layers already decoupled from UI)
 
-## Features
+## Features (v1.1.1)
 
 - Local single-video workflow
 - Platform presets:
@@ -30,6 +30,9 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
   - platform selector
   - **strict mode by default** (fallback disabled unless user enables it)
   - fallback toggle: `Allow fallback generation (less accurate)`
+  - **Check Dependencies** action with pass/fail diagnostics
+  - diagnostics panel showing installed/missing dependencies + strict mode requirements
+  - one-click copy for Windows install commands (FFmpeg/ffprobe and faster-whisper)
   - output fields + copy buttons
   - status log with analysis source summary
 
@@ -75,9 +78,9 @@ The script will:
 3. install requirements
 4. launch the app
 
-## v1.1 Strict Analysis Mode (default)
+## v1.1.1 Strict Analysis Mode + Setup Diagnostics
 
-v1.1 enables strict, grounded analysis by default.
+v1.1.1 keeps strict, grounded analysis as the default and adds setup diagnostics in the GUI.
 
 - Generate will **fail** with actionable guidance if required analysis cannot run.
 - Strict mode requires:
@@ -92,7 +95,28 @@ Status log now reports what actually ran, for example:
 - `metadata=ffprobe, visual=opencv, transcript=whisper`
 - warnings/errors from runtime dependency checks
 
-## Windows dependency notes (v1.1)
+## Quick setup troubleshooting (v1.1.1)
+
+In the app, click **Check Dependencies**.
+
+You will see pass/fail status for:
+- `ffprobe` (from FFmpeg)
+- OpenCV (`opencv-python`)
+- `faster-whisper`
+
+The diagnostics panel also shows:
+- what is installed
+- what is missing
+- what strict mode requires
+- audio assumption notes (strict transcript checks depend on ffprobe metadata)
+
+If a dependency is missing, use one-click copy buttons for Windows install commands:
+- **Copy FFmpeg Install Command (Windows)**
+- **Copy faster-whisper Install Command (Windows)**
+
+After installing, reopen your terminal/app so PATH/package changes are detected.
+
+## Windows dependency notes (v1.1.1)
 
 ### Required for strict mode
 

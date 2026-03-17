@@ -4,15 +4,17 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from . import __version__
 from .analyze import AnalysisContractError, run_analysis
 from .compose import ComposeError, ComposeRequest, compose_content
 from .config import PLATFORM_PRESETS
+from .diagnostics import format_diagnostics_report, run_dependency_diagnostics, windows_install_commands
 from .ingest import IngestError, collect_metadata
 
 
 class VideoCaptionStudioApp:
-    APP_NAME = "Video Caption Studio"
-    WINDOW_TITLE = "Video Caption Studio · Offline Caption Generator"
+    APP_NAME = f"Video Caption Studio v{__version__}"
+    WINDOW_TITLE = f"Video Caption Studio v{__version__} · Offline Caption Generator"
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -26,6 +28,7 @@ class VideoCaptionStudioApp:
         self.status_var = tk.StringVar(value="Ready.")
 
         self._build_ui()
+        self._run_diagnostics()
 
     def _apply_optional_icon(self) -> None:
         root_dir = Path(__file__).resolve().parents[2]
@@ -87,8 +90,31 @@ class VideoCaptionStudioApp:
             variable=self.allow_fallback_var,
         ).grid(row=4, column=0, sticky="w", pady=(10, 0))
 
-        ttk.Button(top, text="Generate", command=self._generate).grid(row=4, column=1, sticky="e")
+        action_row = ttk.Frame(top)
+        action_row.grid(row=4, column=1, sticky="e")
+        ttk.Button(action_row, text="Check Dependencies", command=self._run_diagnostics).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(action_row, text="Generate", command=self._generate).pack(side=tk.LEFT)
         top.columnconfigure(0, weight=1)
+
+        diagnostics_frame = ttk.LabelFrame(frame, text="Dependency Diagnostics", padding=8)
+        diagnostics_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+        self.diagnostics_box = tk.Text(diagnostics_frame, height=11, wrap="word")
+        self.diagnostics_box.pack(fill=tk.BOTH, expand=True)
+
+        button_row = ttk.Frame(diagnostics_frame)
+        button_row.pack(fill=tk.X, pady=(8, 0))
+        self.copy_ffmpeg_btn = ttk.Button(
+            button_row,
+            text="Copy FFmpeg Install Command (Windows)",
+            command=lambda: self._copy_install_command("ffprobe"),
+        )
+        self.copy_ffmpeg_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.copy_whisper_btn = ttk.Button(
+            button_row,
+            text="Copy faster-whisper Install Command (Windows)",
+            command=lambda: self._copy_install_command("faster_whisper"),
+        )
+        self.copy_whisper_btn.pack(side=tk.LEFT)
 
         output = ttk.LabelFrame(frame, text="Generated Output", padding=10)
         output.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
@@ -178,6 +204,33 @@ class VideoCaptionStudioApp:
             self.status_var.set("Failed.")
             messagebox.showerror("Unexpected error", str(exc))
             self._log(f"Unexpected error: {exc}")
+
+    def _run_diagnostics(self) -> None:
+        diagnostics = run_dependency_diagnostics()
+        report = format_diagnostics_report(diagnostics)
+
+        self.diagnostics_box.delete("1.0", tk.END)
+        self.diagnostics_box.insert("1.0", report)
+
+        missing_keys = {item.key for item in diagnostics.missing}
+        self.copy_ffmpeg_btn.state(["!disabled"] if "ffprobe" in missing_keys else ["disabled"])
+        self.copy_whisper_btn.state(["!disabled"] if "faster_whisper" in missing_keys else ["disabled"])
+
+        installed = ", ".join(item.label for item in diagnostics.installed) or "none"
+        missing = ", ".join(item.label for item in diagnostics.missing) or "none"
+        self._log(f"Diagnostics installed: {installed}")
+        self._log(f"Diagnostics missing: {missing}")
+        self._log("Strict mode requires ffprobe + OpenCV (+ faster-whisper when audio exists/unknown).")
+        self.status_var.set("Dependency check complete.")
+
+    def _copy_install_command(self, dependency_key: str) -> None:
+        command = windows_install_commands().get(dependency_key)
+        if not command:
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(command)
+        self.status_var.set("Install command copied. Reopen terminal/app after install.")
+        self._log(f"Copied Windows install command for {dependency_key}.")
 
     def _set_text(self, widget: tk.Text, value: str) -> None:
         widget.delete("1.0", tk.END)
