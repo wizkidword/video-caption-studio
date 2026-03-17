@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .config import SUPPORTED_EXTENSIONS
+from .runtime import bundled_root
 
 
 class IngestError(Exception):
@@ -39,8 +41,30 @@ def validate_video_path(video_path: str) -> Path:
     return path
 
 
+def resolve_ffprobe_path() -> tuple[Optional[str], str]:
+    """Return (command_path, source_kind). source_kind: bundled|system|missing."""
+    candidates: list[Path] = []
+
+    bundle_dir = bundled_root()
+    if bundle_dir:
+        candidates.extend([bundle_dir / "ffprobe.exe", bundle_dir / "ffprobe"])
+
+    exe_dir = Path(sys.executable).resolve().parent
+    candidates.extend([exe_dir / "ffprobe.exe", exe_dir / "ffprobe"])
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return str(candidate), "bundled"
+
+    system_ffprobe = shutil.which("ffprobe")
+    if system_ffprobe:
+        return system_ffprobe, "system"
+
+    return None, "missing"
+
+
 def ffprobe_available() -> bool:
-    return shutil.which("ffprobe") is not None
+    return resolve_ffprobe_path()[0] is not None
 
 
 def _parse_fps(value: Optional[str]) -> Optional[float]:
@@ -60,11 +84,12 @@ def _parse_fps(value: Optional[str]) -> Optional[float]:
 
 
 def _ffprobe_metadata(path: Path) -> Optional[VideoMetadata]:
-    if not ffprobe_available():
+    ffprobe_cmd, _source = resolve_ffprobe_path()
+    if not ffprobe_cmd:
         return None
 
     command = [
-        "ffprobe",
+        ffprobe_cmd,
         "-v",
         "error",
         "-print_format",

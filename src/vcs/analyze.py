@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from .ingest import VideoMetadata
+from .runtime import runtime_mode
 
 try:
     import cv2  # type: ignore
@@ -131,11 +132,20 @@ def extract_transcript_whisper(video_path: str) -> tuple[str, Optional[str]]:
 
 
 def _install_guidance() -> str:
+    if runtime_mode() == "exe":
+        return (
+            "EXE runtime detected. Strict analysis dependencies must be bundled during EXE build:\n"
+            "- Include ffprobe binary in the packaged app\n"
+            "- Ensure opencv-python and faster-whisper are installed in build environment before PyInstaller\n"
+            "- Rebuild the EXE (do not use system py -m pip to patch a built EXE)\n"
+            "If you need a best-effort run anyway, enable 'Allow fallback generation (less accurate)'."
+        )
+
     return (
-        "Install requirements for strict analysis:\n"
+        "Install requirements for strict analysis in your project venv:\n"
         "- ffprobe (from ffmpeg): https://ffmpeg.org/download.html\n"
-        "- OpenCV: pip install opencv-python\n"
-        "- Optional transcript support: pip install faster-whisper\n"
+        "- OpenCV: .venv\\Scripts\\python -m pip install opencv-python\n"
+        "- Optional transcript support: .venv\\Scripts\\python -m pip install faster-whisper\n"
         "If you need a best-effort run anyway, enable 'Allow fallback generation (less accurate)'."
     )
 

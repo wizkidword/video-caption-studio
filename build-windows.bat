@@ -24,7 +24,14 @@ call .venv\Scripts\python -m pip install --upgrade pip
 call .venv\Scripts\python -m pip install -r requirements.txt
 if errorlevel 1 exit /b 1
 
-call .venv\Scripts\python -m PyInstaller --noconfirm --onefile --windowed --name video-caption-studio app.py
+if exist third_party\ffprobe.exe (
+  set VCS_FFPROBE_PATH=third_party\ffprobe.exe
+  echo [INFO] Bundling ffprobe from %VCS_FFPROBE_PATH%
+) else (
+  echo [WARN] third_party\ffprobe.exe not found. Build will rely on system ffprobe if available at runtime.
+)
+
+call .venv\Scripts\python -m PyInstaller --noconfirm video-caption-studio.spec
 if errorlevel 1 exit /b 1
 
 echo [DONE] Build output: dist\video-caption-studio.exe

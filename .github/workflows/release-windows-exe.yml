@@ -22,15 +22,23 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install FFmpeg (for ffprobe bundling)
+        shell: powershell
+        run: |
+          choco install ffmpeg -y
+          $ffprobe = (Get-Command ffprobe.exe).Source
+          echo "VCS_FFPROBE_PATH=$ffprobe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
 
       - name: Build EXE
+        env:
+          VCS_FFPROBE_PATH: ${{ env.VCS_FFPROBE_PATH }}
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name video-caption-studio app.py
+          pyinstaller --noconfirm video-caption-studio.spec
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4

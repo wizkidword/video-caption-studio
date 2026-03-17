@@ -6,7 +6,7 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
 - future **online AI providers** (provider-pluggable compose layer)
 - future **batch processing** (analysis/compose layers already decoupled from UI)
 
-## Features (v1.1.1)
+## Features (v1.1.2)
 
 - Local single-video workflow
 - Platform presets:
@@ -78,9 +78,9 @@ The script will:
 3. install requirements
 4. launch the app
 
-## v1.1.1 Strict Analysis Mode + Setup Diagnostics
+## v1.1.2 Strict Analysis Mode + Setup Diagnostics
 
-v1.1.1 keeps strict, grounded analysis as the default and adds setup diagnostics in the GUI.
+v1.1.2 keeps strict, grounded analysis as the default and adds runtime-mode-aware diagnostics/setup guidance.
 
 - Generate will **fail** with actionable guidance if required analysis cannot run.
 - Strict mode requires:
@@ -95,7 +95,7 @@ Status log now reports what actually ran, for example:
 - `metadata=ffprobe, visual=opencv, transcript=whisper`
 - warnings/errors from runtime dependency checks
 
-## Quick setup troubleshooting (v1.1.1)
+## Quick setup troubleshooting (v1.1.2)
 
 In the app, click **Check Dependencies**.
 
@@ -116,31 +116,51 @@ If a dependency is missing, use one-click copy buttons for Windows install comma
 
 After installing, reopen your terminal/app so PATH/package changes are detected.
 
-## Windows dependency notes (v1.1.1)
+## EXE vs source mode dependencies (v1.1.2)
 
-### Required for strict mode
+The app now reports dependency presence as one of:
+- `bundled` (inside packaged EXE)
+- `system` (resolved from normal Python/PATH)
+- `missing`
 
-1. Install FFmpeg (includes `ffprobe`):
-   - Download: https://ffmpeg.org/download.html
-   - Ensure `ffprobe.exe` is on your `PATH`
-2. Install Python packages:
-   ```bat
-   pip install opencv-python
-   ```
+### Source / venv mode
 
-### Optional (transcript capability)
+Install Python packages into the project venv (not global Python):
 
 ```bat
-pip install faster-whisper
+.venv\Scripts\python -m pip install opencv-python
+.venv\Scripts\python -m pip install faster-whisper
 ```
 
-Without `faster-whisper`, strict mode can still pass only when `ffprobe` confirms there is no audio track.
+Also install FFmpeg so `ffprobe` is on PATH:
+
+```bat
+winget install --id Gyan.FFmpeg -e
+```
+
+### Packaged EXE mode
+
+Do **not** try to fix dependencies with `py -m pip` after the EXE is built.
+In EXE mode, dependencies must be bundled at build time:
+- `opencv-python`
+- `faster-whisper` (and transitive runtime libs)
+- `ffprobe.exe` (bundled into the EXE)
+
+If EXE diagnostics show `missing`, rebuild the EXE with bundled deps.
 
 ## Build Windows EXE (PyInstaller)
+
+1. Put `ffprobe.exe` at `third_party\ffprobe.exe` (recommended), or ensure build env sets `VCS_FFPROBE_PATH`.
+2. Run:
 
 ```bat
 build-windows.bat
 ```
+
+This uses `video-caption-studio.spec` to bundle:
+- faster-whisper stack
+- ctranslate2/tokenizers runtime pieces
+- ffprobe binary when available
 
 Output:
 - `dist\video-caption-studio.exe`

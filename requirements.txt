@@ -1,3 +1,4 @@
 opencv-python>=4.9.0.80
+faster-whisper>=1.0.0
 pytest>=8.0.0
 pyinstaller>=6.6.0
