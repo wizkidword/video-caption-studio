@@ -5,7 +5,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import __version__
-from .analyze import AnalysisContractError, run_analysis
+from .analyze import AnalysisContractError, run_analysis, transcript_runtime_precheck
 from .compose import ComposeError, ComposeRequest, compose_content
 from .config import PLATFORM_PRESETS
 from .diagnostics import format_diagnostics_report, run_dependency_diagnostics, windows_install_commands
@@ -93,6 +93,7 @@ class VideoCaptionStudioApp:
         action_row = ttk.Frame(top)
         action_row.grid(row=4, column=1, sticky="e")
         ttk.Button(action_row, text="Check Dependencies", command=self._run_diagnostics).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(action_row, text="Test Transcript", command=self._test_transcript).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(action_row, text="Generate", command=self._generate).pack(side=tk.LEFT)
         top.columnconfigure(0, weight=1)
 
@@ -150,6 +151,40 @@ class VideoCaptionStudioApp:
             self.video_path_var.set(path)
             self._log(f"Selected: {path}")
 
+    def _test_transcript(self) -> None:
+        video_path = self.video_path_var.get().strip()
+        if not video_path:
+            messagebox.showwarning("Missing input", "Please choose a video first.")
+            return
+
+        self.status_var.set("Testing transcript runtime...")
+        self.root.update_idletasks()
+
+        try:
+            metadata = collect_metadata(video_path)
+            if metadata.has_audio is False:
+                msg = "No audio stream detected by ffprobe. Transcript runtime test not required for strict mode."
+                self._log(msg)
+                self.status_var.set("Transcript test skipped (no audio).")
+                messagebox.showinfo("Transcript Test", msg)
+                return
+
+            ok, user_msg, detail = transcript_runtime_precheck(video_path)
+            status = "PASS" if ok else "FAIL"
+            self._log(f"Transcript precheck [{status}]: {user_msg}")
+            if detail:
+                self._log(f"Details: {detail}")
+            self.status_var.set("Transcript test passed." if ok else "Transcript test failed.")
+            messagebox.showinfo("Transcript Test", f"{user_msg}" + (f"\n\nDetails: {detail}" if detail else ""))
+        except IngestError as exc:
+            self.status_var.set("Transcript test failed.")
+            messagebox.showerror("Transcript Test", str(exc))
+            self._log(f"Transcript test error: {exc}")
+        except Exception as exc:  # pragma: no cover - UI safety
+            self.status_var.set("Transcript test failed.")
+            messagebox.showerror("Transcript Test", str(exc))
+            self._log(f"Transcript test unexpected error: {exc}")
+
     def _generate(self) -> None:
         video_path = self.video_path_var.get().strip()
         if not video_path:
@@ -183,6 +218,18 @@ class VideoCaptionStudioApp:
                     "Analysis summary: "
                     f"metadata={report.metadata_source}, visual={report.visual_source}, transcript={report.transcript_source}"
                 )
+                runtime_state = "passed" if report.transcript_runtime_ok else "failed"
+                if report.transcript_runtime_ok is None:
+                    runtime_state = "not-run"
+                self._log(
+                    "Transcript status: "
+                    f"dependency={'present' if report.transcript_dependency_available else 'missing'}, "
+                    f"runtime={runtime_state}"
+                )
+                if report.transcript_runtime_message:
+                    self._log(f"Transcript: {report.transcript_runtime_message}")
+                if report.transcript_error_detail:
+                    self._log(f"Details: {report.transcript_error_detail}")
                 for warning in report.warnings:
                     self._log(f"Warning: {warning}")
                 for error in report.errors:

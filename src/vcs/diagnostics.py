@@ -109,7 +109,7 @@ def run_dependency_diagnostics() -> DependencyDiagnostics:
 
 
 def format_diagnostics_report(diagnostics: DependencyDiagnostics) -> str:
-    lines: List[str] = ["Dependency Diagnostics (v1.1.2)"]
+    lines: List[str] = ["Dependency Diagnostics (v1.1.3)"]
 
     for status in diagnostics.statuses:
         state = "PASS" if status.installed else "FAIL"

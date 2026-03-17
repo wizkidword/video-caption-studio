@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .ingest import VideoMetadata
 from .runtime import runtime_mode
@@ -26,6 +26,10 @@ class AnalysisReport:
     metadata_source: str
     visual_source: str
     transcript_source: str
+    transcript_dependency_available: bool = False
+    transcript_runtime_ok: Optional[bool] = None
+    transcript_runtime_message: str = ""
+    transcript_error_detail: str = ""
     warnings: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
@@ -58,6 +62,28 @@ def _classify_frame_brightness(mean_value: float) -> str:
     if mean_value > 180:
         return "bright_scene"
     return "balanced_lighting"
+
+
+def _truncate_detail(message: str, max_len: int = 380) -> str:
+    clean = " ".join((message or "").split())
+    if len(clean) <= max_len:
+        return clean
+    return clean[: max_len - 3] + "..."
+
+
+def _actionable_transcript_message(detail: str) -> str:
+    text = detail.lower()
+    if any(k in text for k in ["dll", "lib", "not found", "cannot open shared object"]):
+        return "Transcript runtime failed: required whisper/runtime libraries were not found."
+    if any(k in text for k in ["cuda", "cudnn", "gpu", "compute capability"]):
+        return "Transcript runtime failed: unsupported/misconfigured GPU path. Try CPU mode or install matching CUDA/cuDNN."
+    if any(k in text for k in ["model", "download", "permission", "cache"]):
+        return "Transcript runtime failed while loading whisper model files."
+    if any(k in text for k in ["ffmpeg", "decode", "invalid data", "moov atom", "could not open"]):
+        return "Transcript runtime failed while decoding audio from the video file."
+    if any(k in text for k in ["avx", "illegal instruction", "not supported"]):
+        return "Transcript runtime failed: unsupported CPU instruction/runtime path."
+    return "Transcript runtime failed during faster-whisper execution."
 
 
 def opencv_available() -> bool:
@@ -118,17 +144,39 @@ def extract_visual_signals(video_path: str, max_samples: int = 8) -> AnalysisRes
     return result
 
 
-def extract_transcript_whisper(video_path: str) -> tuple[str, Optional[str]]:
+def transcript_runtime_precheck(video_path: str) -> Tuple[bool, str, str]:
+    """Attempt lightweight runtime init/test for faster-whisper on selected file.
+
+    Returns: (ok, user_message, detail)
+    """
     if WhisperModel is None:
-        return "", "faster-whisper not installed; transcript extraction skipped."
+        detail = "faster-whisper import unavailable in current runtime"
+        return False, "Transcript precheck failed: faster-whisper is not installed/available.", detail
+
+    try:
+        model = WhisperModel("tiny", compute_type="int8")
+        segments, _ = model.transcribe(video_path, vad_filter=True, beam_size=1)
+        # Consume at most one segment to force real runtime path without full transcription.
+        _ = next(iter(segments), None)
+        return True, "Transcript precheck passed.", ""
+    except Exception as exc:
+        detail = _truncate_detail(str(exc))
+        return False, _actionable_transcript_message(detail), detail
+
+
+def extract_transcript_whisper(video_path: str) -> tuple[str, Optional[str], Optional[str]]:
+    if WhisperModel is None:
+        detail = "faster-whisper import unavailable in current runtime"
+        return "", "faster-whisper not installed; transcript extraction skipped.", detail
 
     try:
         model = WhisperModel("tiny", compute_type="int8")
         segments, _ = model.transcribe(video_path, vad_filter=True)
         text = " ".join(segment.text.strip() for segment in segments if segment.text.strip())
-        return text.strip(), None
+        return text.strip(), None, None
     except Exception as exc:
-        return "", f"Whisper transcription failed: {exc}"
+        detail = _truncate_detail(str(exc))
+        return "", _actionable_transcript_message(detail), detail
 
 
 def _install_guidance() -> str:
@@ -161,7 +209,12 @@ def _validate_strict_requirements(report: AnalysisReport, has_audio: Optional[bo
     if has_audio is False:
         pass
     elif report.transcript_source != "whisper":
-        issues.append("Transcript must come from faster-whisper when audio is present or unknown.")
+        if report.transcript_runtime_message:
+            issues.append(report.transcript_runtime_message)
+        else:
+            issues.append("Transcript must come from faster-whisper when audio is present or unknown.")
+        if report.transcript_error_detail:
+            issues.append(f"Details: {report.transcript_error_detail}")
 
     if issues:
         raise AnalysisContractError("Strict analysis requirements not met:\n- " + "\n- ".join(issues) + "\n\n" + _install_guidance())
@@ -182,19 +235,46 @@ def run_analysis(video_path: str, metadata: VideoMetadata, strict_mode: bool = T
 
     transcript = ""
     transcript_source = "none"
+    transcript_dependency_available = whisper_available()
+    transcript_runtime_ok: Optional[bool] = None
+    transcript_runtime_message = ""
+    transcript_error_detail = ""
+
     if metadata.has_audio is False:
         warnings.append("No audio track detected by ffprobe; transcript not required.")
+        transcript_runtime_ok = True
+        transcript_runtime_message = "Skipped transcript runtime test because ffprobe confirmed no audio stream."
     else:
-        transcript, transcript_error = extract_transcript_whisper(video_path)
-        if transcript:
-            transcript_source = "whisper"
-        elif transcript_error:
-            warnings.append(transcript_error)
+        precheck_ok, precheck_message, precheck_detail = transcript_runtime_precheck(video_path)
+        transcript_runtime_ok = precheck_ok
+        transcript_runtime_message = precheck_message
+        transcript_error_detail = precheck_detail
+
+        if not precheck_ok:
+            warnings.append(precheck_message)
+            if precheck_detail:
+                warnings.append(f"Details: {precheck_detail}")
+        else:
+            transcript, transcript_error, transcript_detail = extract_transcript_whisper(video_path)
+            if transcript:
+                transcript_source = "whisper"
+            else:
+                transcript_runtime_ok = False
+                transcript_runtime_message = transcript_error or "Transcript extraction failed."
+                transcript_error_detail = transcript_detail or transcript_error or ""
+                if transcript_runtime_message:
+                    warnings.append(transcript_runtime_message)
+                if transcript_error_detail:
+                    warnings.append(f"Details: {transcript_error_detail}")
 
     report = AnalysisReport(
         metadata_source=metadata.source,
         visual_source=visual_source,
         transcript_source=transcript_source,
+        transcript_dependency_available=transcript_dependency_available,
+        transcript_runtime_ok=transcript_runtime_ok,
+        transcript_runtime_message=transcript_runtime_message,
+        transcript_error_detail=transcript_error_detail,
         warnings=warnings,
         errors=errors,
     )

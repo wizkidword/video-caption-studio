@@ -6,7 +6,7 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
 - future **online AI providers** (provider-pluggable compose layer)
 - future **batch processing** (analysis/compose layers already decoupled from UI)
 
-## Features (v1.1.2)
+## Features (v1.1.3)
 
 - Local single-video workflow
 - Platform presets:
@@ -31,10 +31,11 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
   - **strict mode by default** (fallback disabled unless user enables it)
   - fallback toggle: `Allow fallback generation (less accurate)`
   - **Check Dependencies** action with pass/fail diagnostics
+  - **Test Transcript** action for selected file (runtime precheck + details)
   - diagnostics panel showing installed/missing dependencies + strict mode requirements
   - one-click copy for Windows install commands (FFmpeg/ffprobe and faster-whisper)
   - output fields + copy buttons
-  - status log with analysis source summary
+  - status log with analysis source summary including transcript dependency vs runtime state
 
 ## Project Layout
 
@@ -78,9 +79,9 @@ The script will:
 3. install requirements
 4. launch the app
 
-## v1.1.2 Strict Analysis Mode + Setup Diagnostics
+## v1.1.3 Strict Analysis Mode + Runtime Transcript Diagnostics
 
-v1.1.2 keeps strict, grounded analysis as the default and adds runtime-mode-aware diagnostics/setup guidance.
+v1.1.3 keeps strict, grounded analysis as the default and adds runtime transcript prechecks with actionable failure details.
 
 - Generate will **fail** with actionable guidance if required analysis cannot run.
 - Strict mode requires:
@@ -95,7 +96,7 @@ Status log now reports what actually ran, for example:
 - `metadata=ffprobe, visual=opencv, transcript=whisper`
 - warnings/errors from runtime dependency checks
 
-## Quick setup troubleshooting (v1.1.2)
+## Quick setup troubleshooting (v1.1.3)
 
 In the app, click **Check Dependencies**.
 
@@ -116,7 +117,30 @@ If a dependency is missing, use one-click copy buttons for Windows install comma
 
 After installing, reopen your terminal/app so PATH/package changes are detected.
 
-## EXE vs source mode dependencies (v1.1.2)
+### Transcript runtime troubleshooting (v1.1.3)
+
+If **Generate** fails strict mode while diagnostics show faster-whisper is installed, use **Test Transcript** on the same file.
+
+The app now reports a user-friendly cause plus a `Details:` line with truncated runtime exception text.
+
+Common causes and fixes:
+- **Model load/cache/permission failure**
+  - Ensure user has write access to whisper cache directories.
+  - Retry once with internet access if model files were not downloaded yet.
+- **Missing runtime libraries / DLL / shared objects**
+  - In source mode: reinstall into `.venv` and relaunch app.
+  - In EXE mode: rebuild EXE with dependencies bundled (do not patch with system `py -m pip`).
+- **Unsupported GPU/CUDA path**
+  - Use CPU-compatible runtime setup or install matching CUDA/cuDNN stack.
+- **Audio decode/ffmpeg path issues**
+  - Verify the selected file plays normally and contains a valid audio stream.
+  - Re-export/remux the video if decode errors persist.
+
+Strict mode behavior:
+- If `ffprobe` confirms **no audio stream**, transcript is not required.
+- If audio is present/unknown and transcript runtime fails, strict mode fails with the specific transcript reason + details.
+
+## EXE vs source mode dependencies (v1.1.3)
 
 The app now reports dependency presence as one of:
 - `bundled` (inside packaged EXE)
