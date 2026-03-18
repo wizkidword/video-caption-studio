@@ -6,7 +6,7 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
 - future **online AI providers** (provider-pluggable compose layer)
 - future **batch processing** (analysis/compose layers already decoupled from UI)
 
-## Features (v1.1.4)
+## Features (v1.2.0)
 
 - Local single-video workflow
 - Platform presets:
@@ -24,16 +24,23 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
   - structured analysis report with real source attribution
 - Compose layer:
   - provider interface contract
-  - local heuristic provider for offline generation
+  - **Smart provider:** local Ollama LLM (offline runtime)
+  - **Template provider:** local heuristic fallback
+  - robust JSON-first output parsing with fallback extraction
 - GUI:
   - file picker
   - platform selector
+  - composition mode selector:
+    - Smart (Local LLM via Ollama) [default]
+    - Template (Fallback)
+  - creativity selector (low/medium/high)
+  - brand voice / notes field (optional)
   - **strict mode by default** (fallback disabled unless user enables it)
   - fallback toggle: `Allow fallback generation (less accurate)`
   - **Check Dependencies** action with pass/fail diagnostics
   - **Test Transcript** action for selected file (runtime precheck + details)
   - diagnostics panel showing installed/missing dependencies + strict mode requirements
-  - one-click copy for Windows install commands (FFmpeg/ffprobe and faster-whisper)
+  - one-click copy for setup commands (FFmpeg/ffprobe, faster-whisper, Ollama)
   - output fields + copy buttons
   - status log with analysis source summary including transcript dependency vs runtime state
 
@@ -52,6 +59,7 @@ src/vcs/
     __init__.py
     base.py
     local_provider.py
+    ollama_provider.py
 tests/
 requirements.txt
 run-windows.bat
@@ -79,24 +87,39 @@ The script will:
 3. install requirements
 4. launch the app
 
-## v1.1.4 Strict Analysis Mode + Runtime Transcript Diagnostics
+## v1.2.0 Smart Offline Composition + Strict Analysis
 
-v1.1.4 keeps strict, grounded analysis as the default and adds runtime transcript prechecks with actionable failure details.
+v1.2.0 adds genuinely smarter offline copy generation while keeping strict analysis and fallback safety.
 
-- Generate will **fail** with actionable guidance if required analysis cannot run.
-- Strict mode requires:
+### Smart mode requirements
+
+Smart composition uses a local Ollama runtime (no cloud dependency):
+
+```bash
+# install (Windows)
+winget install Ollama.Ollama
+
+# start local Ollama server
+ollama serve
+
+# pull default model used by app
+ollama pull llama3.1:8b-instruct
+```
+
+### Behavior and fallback
+
+- Default composition mode is **Smart (Local LLM via Ollama)**.
+- If Ollama/model is unavailable, the app returns an actionable message and you can switch to:
+  - **Template (Fallback)**
+- Strict analysis rules are unchanged:
   - `metadata_source=ffprobe`
   - `visual_source=opencv`
   - `transcript_source=whisper` when audio is present/unknown
   - OR explicit no-audio detection from `ffprobe`
-- To allow best-effort generation, enable:
-  - `Allow fallback generation (less accurate)` in the GUI
 
-Status log now reports what actually ran, for example:
-- `metadata=ffprobe, visual=opencv, transcript=whisper`
-- warnings/errors from runtime dependency checks
+Status log reports both analysis sources and composition provider used.
 
-## Quick setup troubleshooting (v1.1.4)
+## Quick setup troubleshooting (v1.2.0)
 
 In the app, click **Check Dependencies**.
 
@@ -104,6 +127,7 @@ You will see pass/fail status for:
 - `ffprobe` (from FFmpeg)
 - OpenCV (`opencv-python`)
 - `faster-whisper`
+- Ollama + default smart model (`llama3.1:8b-instruct`)
 
 The diagnostics panel also shows:
 - what is installed
@@ -114,10 +138,11 @@ The diagnostics panel also shows:
 If a dependency is missing, use one-click copy buttons for Windows install commands:
 - **Copy FFmpeg Install Command (Windows)**
 - **Copy faster-whisper Install Command (Windows)**
+- **Copy Ollama Setup Commands**
 
 After installing, reopen your terminal/app so PATH/package changes are detected.
 
-### Transcript runtime troubleshooting (v1.1.4)
+### Transcript runtime troubleshooting (v1.2.0)
 
 If **Generate** fails strict mode while diagnostics show faster-whisper is installed, use **Test Transcript** on the same file.
 
@@ -141,7 +166,7 @@ Strict mode behavior:
 - If `ffprobe` confirms **no audio stream**, transcript is not required.
 - If audio is present/unknown and transcript runtime fails, strict mode fails with the specific transcript reason + details.
 
-## EXE vs source mode dependencies (v1.1.4)
+## EXE vs source mode dependencies (v1.2.0)
 
 The app now reports dependency presence as one of:
 - `bundled` (inside packaged EXE)

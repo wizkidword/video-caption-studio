@@ -5,6 +5,17 @@ from typing import Dict, List
 
 SUPPORTED_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 
+DEFAULT_COMPOSITION_MODE = "ollama"
+DEFAULT_OLLAMA_MODEL = "llama3.1:8b-instruct"
+DEFAULT_OLLAMA_TIMEOUT_SEC = 45
+
+COMPOSITION_MODES: Dict[str, str] = {
+    "ollama": "Smart (Local LLM via Ollama)",
+    "local": "Template (Fallback)",
+}
+
+CREATIVITY_LEVELS = ("low", "medium", "high")
+
 
 @dataclass(frozen=True)
 class PlatformPreset:
@@ -42,9 +53,11 @@ PLATFORM_PRESETS: Dict[str, PlatformPreset] = {
 
 @dataclass
 class AppConfig:
-    provider_key: str = "local"
+    provider_key: str = DEFAULT_COMPOSITION_MODE
     max_frames: int = 8
     transcript_enabled: bool = False
+    ollama_model: str = DEFAULT_OLLAMA_MODEL
+    ollama_timeout_sec: int = DEFAULT_OLLAMA_TIMEOUT_SEC
 
 
 def platform_keys() -> List[str]:

@@ -7,7 +7,7 @@ from tkinter import filedialog, messagebox, ttk
 from . import __version__
 from .analyze import AnalysisContractError, run_analysis, transcript_runtime_precheck
 from .compose import ComposeError, ComposeRequest, compose_content
-from .config import PLATFORM_PRESETS
+from .config import COMPOSITION_MODES, CREATIVITY_LEVELS, DEFAULT_COMPOSITION_MODE, PLATFORM_PRESETS
 from .diagnostics import format_diagnostics_report, run_dependency_diagnostics, windows_install_commands
 from .ingest import IngestError, collect_metadata
 
@@ -24,6 +24,10 @@ class VideoCaptionStudioApp:
 
         self.video_path_var = tk.StringVar()
         self.platform_var = tk.StringVar(value="tiktok")
+        self.composition_mode_labels = {v: k for k, v in COMPOSITION_MODES.items()}
+        self.composition_mode_var = tk.StringVar(value=COMPOSITION_MODES[DEFAULT_COMPOSITION_MODE])
+        self.creativity_var = tk.StringVar(value="medium")
+        self.brand_voice_var = tk.StringVar()
         self.allow_fallback_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready.")
 
@@ -84,14 +88,37 @@ class VideoCaptionStudioApp:
         )
         platform_menu.grid(row=3, column=0, sticky="w")
 
+        ttk.Label(top, text="Composition Mode").grid(row=2, column=1, sticky="w", pady=(10, 0))
+        composition_menu = ttk.Combobox(
+            top,
+            textvariable=self.composition_mode_var,
+            values=list(COMPOSITION_MODES.values()),
+            state="readonly",
+            width=35,
+        )
+        composition_menu.grid(row=3, column=1, sticky="w")
+
+        ttk.Label(top, text="Creativity").grid(row=4, column=0, sticky="w", pady=(10, 0))
+        creativity_menu = ttk.Combobox(
+            top,
+            textvariable=self.creativity_var,
+            values=list(CREATIVITY_LEVELS),
+            state="readonly",
+            width=12,
+        )
+        creativity_menu.grid(row=5, column=0, sticky="w")
+
+        ttk.Label(top, text="Brand voice / notes (optional)").grid(row=4, column=1, sticky="w", pady=(10, 0))
+        ttk.Entry(top, textvariable=self.brand_voice_var, width=40).grid(row=5, column=1, sticky="ew")
+
         ttk.Checkbutton(
             top,
             text="Allow fallback generation (less accurate)",
             variable=self.allow_fallback_var,
-        ).grid(row=4, column=0, sticky="w", pady=(10, 0))
+        ).grid(row=6, column=0, sticky="w", pady=(10, 0))
 
         action_row = ttk.Frame(top)
-        action_row.grid(row=4, column=1, sticky="e")
+        action_row.grid(row=6, column=1, sticky="e")
         ttk.Button(action_row, text="Check Dependencies", command=self._run_diagnostics).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(action_row, text="Test Transcript", command=self._test_transcript).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(action_row, text="Generate", command=self._generate).pack(side=tk.LEFT)
@@ -115,7 +142,13 @@ class VideoCaptionStudioApp:
             text="Copy faster-whisper Install Command (Windows)",
             command=lambda: self._copy_install_command("faster_whisper"),
         )
-        self.copy_whisper_btn.pack(side=tk.LEFT)
+        self.copy_whisper_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.copy_ollama_btn = ttk.Button(
+            button_row,
+            text="Copy Ollama Setup Commands",
+            command=lambda: self._copy_install_command("ollama"),
+        )
+        self.copy_ollama_btn.pack(side=tk.LEFT)
 
         output = ttk.LabelFrame(frame, text="Generated Output", padding=10)
         output.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
@@ -200,13 +233,21 @@ class VideoCaptionStudioApp:
             metadata = collect_metadata(video_path)
             analysis = run_analysis(video_path, metadata=metadata, strict_mode=strict_mode)
 
+            mode_label = self.composition_mode_var.get().strip()
+            provider_key = self.composition_mode_labels.get(mode_label, DEFAULT_COMPOSITION_MODE)
+            self._log(f"Composition provider selected: {COMPOSITION_MODES.get(provider_key, mode_label or provider_key)}")
+
             content = compose_content(
                 ComposeRequest(
                     metadata=metadata,
                     analysis=analysis,
                     platform_key=self.platform_var.get(),
+                    provider_key=provider_key,
+                    creativity=self.creativity_var.get(),
+                    brand_voice_notes=self.brand_voice_var.get().strip(),
                 )
             )
+            self._log(f"Composition provider used: {COMPOSITION_MODES.get(provider_key, provider_key)}")
 
             self._set_text(self.title_text, content.title)
             self._set_text(self.caption_text, content.caption)
@@ -262,6 +303,7 @@ class VideoCaptionStudioApp:
         missing_keys = {item.key for item in diagnostics.missing}
         self.copy_ffmpeg_btn.state(["!disabled"] if "ffprobe" in missing_keys else ["disabled"])
         self.copy_whisper_btn.state(["!disabled"] if "faster_whisper" in missing_keys else ["disabled"])
+        self.copy_ollama_btn.state(["!disabled"] if "ollama" in missing_keys else ["disabled"])
 
         installed = ", ".join(item.label for item in diagnostics.installed) or "none"
         missing = ", ".join(item.label for item in diagnostics.missing) or "none"

@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from .analyze import WhisperModel, cv2
+from .config import DEFAULT_OLLAMA_MODEL
 from .ingest import resolve_ffprobe_path
+from .providers.ollama_provider import check_ollama_health
 from .runtime import runtime_mode
 
 
@@ -56,6 +58,7 @@ def run_dependency_diagnostics() -> DependencyDiagnostics:
     opencv_presence = _module_presence(cv2)
     whisper_presence = _symbol_presence(WhisperModel)
     mode = runtime_mode()
+    ollama_health = check_ollama_health(model=DEFAULT_OLLAMA_MODEL, timeout_sec=3)
 
     statuses = [
         DependencyStatus(
@@ -86,6 +89,17 @@ def run_dependency_diagnostics() -> DependencyDiagnostics:
             ),
             presence=whisper_presence,
         ),
+        DependencyStatus(
+            key="ollama",
+            label=f"Ollama smart composition ({DEFAULT_OLLAMA_MODEL})",
+            installed=ollama_health.available and ollama_health.model_available,
+            required_for_strict=False,
+            detail=(
+                "Optional but recommended for Smart mode. "
+                f"Status: {ollama_health.detail}"
+            ),
+            presence="system" if ollama_health.available else "missing",
+        ),
     ]
 
     mode_note = (
@@ -111,7 +125,7 @@ def run_dependency_diagnostics() -> DependencyDiagnostics:
 
 
 def format_diagnostics_report(diagnostics: DependencyDiagnostics) -> str:
-    lines: List[str] = ["Dependency Diagnostics (v1.1.4)"]
+    lines: List[str] = ["Dependency Diagnostics (v1.2.0)"]
 
     for status in diagnostics.statuses:
         state = "PASS" if status.installed else "FAIL"
@@ -134,6 +148,8 @@ def format_diagnostics_report(diagnostics: DependencyDiagnostics) -> str:
     lines.append(f"- {diagnostics.strict_requirements}")
     lines.append(f"- {diagnostics.audio_note}")
     lines.append(f"- {diagnostics.mode_note}")
+    lines.append("- Smart mode is optional. If Ollama is unavailable, switch Composition Mode to Template (Fallback).")
+    lines.append("- Ollama quick setup: install -> `ollama serve` -> `ollama pull llama3.1:8b-instruct`.")
     lines.append("- After installing or rebuilding, reopen your terminal/app before running again.")
 
     return "\n".join(lines)
@@ -150,6 +166,12 @@ def windows_install_commands() -> Dict[str, str]:
         return {
             "ffprobe": exe_note,
             "faster_whisper": exe_note,
+            "ollama": (
+                "Ollama runs outside the EXE as a local service:\n"
+                "1) Install Ollama (https://ollama.com/download)\n"
+                "2) Start: ollama serve\n"
+                f"3) Pull model: ollama pull {DEFAULT_OLLAMA_MODEL}"
+            ),
         }
 
     return {
@@ -160,5 +182,10 @@ def windows_install_commands() -> Dict[str, str]:
         "faster_whisper": (
             ".venv\\Scripts\\python -m pip install faster-whisper\n"
             ":: Reopen terminal/app after install"
+        ),
+        "ollama": (
+            "winget install Ollama.Ollama\n"
+            "ollama serve\n"
+            f"ollama pull {DEFAULT_OLLAMA_MODEL}"
         ),
     }
