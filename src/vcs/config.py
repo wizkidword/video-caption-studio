@@ -6,7 +6,7 @@ from typing import Dict, List
 SUPPORTED_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 
 DEFAULT_COMPOSITION_MODE = "ollama"
-DEFAULT_OLLAMA_MODEL = "llama3.1:8b-instruct"
+DEFAULT_OLLAMA_MODEL = "llama3.1:8b"
 DEFAULT_OLLAMA_TIMEOUT_SEC = 45
 
 COMPOSITION_MODES: Dict[str, str] = {

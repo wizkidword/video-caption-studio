@@ -11,7 +11,7 @@ def test_run_dependency_diagnostics_reports_presence(monkeypatch):
     monkeypatch.setattr(
         diagnostics,
         "check_ollama_health",
-        lambda model, timeout_sec: OllamaHealth(False, "not running", False),
+        lambda model, timeout_sec: OllamaHealth(False, "not running", False, model, None),
     )
 
     result = run_dependency_diagnostics()
@@ -35,7 +35,7 @@ def test_format_diagnostics_report_includes_presence_sections():
 
     report = format_diagnostics_report(sample)
 
-    assert "Dependency Diagnostics (v1.2.0)" in report
+    assert "Dependency Diagnostics (v1.2.1)" in report
     assert "[PASS] ffprobe (from FFmpeg)" in report
     assert "Presence: bundled" in report
     assert "[FAIL] OpenCV (opencv-python)" in report
@@ -50,7 +50,7 @@ def test_diagnostics_mentions_cpu_default_no_cuda_requirement(monkeypatch):
     monkeypatch.setattr(
         diagnostics,
         "check_ollama_health",
-        lambda model, timeout_sec: OllamaHealth(True, "ok", True),
+        lambda model, timeout_sec: OllamaHealth(True, "ok", True, model, model),
     )
     result = run_dependency_diagnostics()
     assert "CPU-first" in result.strict_requirements
@@ -73,3 +73,31 @@ def test_windows_install_commands_exe_mode(monkeypatch):
     assert "must be bundled during build" in commands["ffprobe"]
     assert "Do NOT use system" in commands["faster_whisper"]
     assert "Ollama runs outside the EXE" in commands["ollama"]
+
+
+def test_diagnostics_report_includes_configured_and_selected_ollama_models(monkeypatch):
+    monkeypatch.setattr(diagnostics, "resolve_ffprobe_path", lambda: ("C:/ffprobe.exe", "bundled"))
+    monkeypatch.setattr(diagnostics, "cv2", object())
+    monkeypatch.setattr(diagnostics, "WhisperModel", object())
+    monkeypatch.setattr(diagnostics, "runtime_mode", lambda: "source")
+    monkeypatch.setattr(
+        diagnostics,
+        "check_ollama_health",
+        lambda model, timeout_sec: OllamaHealth(
+            True,
+            "Configured model 'llama3.1:8b-instruct' was not found. Using 'llama3.1:8b' from local models.",
+            False,
+            "llama3.1:8b-instruct",
+            "llama3.1:8b",
+        ),
+    )
+
+    result = run_dependency_diagnostics()
+    ollama_status = next(item for item in result.statuses if item.key == "ollama")
+    report = format_diagnostics_report(result)
+
+    assert ollama_status.installed is True
+    assert "Configured model: llama3.1:8b-instruct" in ollama_status.detail
+    assert "Selected model: llama3.1:8b" in ollama_status.detail
+    assert "Configured smart model" in report
+    assert "auto-selects a same-family local model" in report

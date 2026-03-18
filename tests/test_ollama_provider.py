@@ -2,7 +2,7 @@ from src.vcs.analyze import AnalysisResult
 from src.vcs.config import PLATFORM_PRESETS
 from src.vcs.ingest import VideoMetadata
 from src.vcs.providers import ollama_provider
-from src.vcs.providers.ollama_provider import parse_model_output
+from src.vcs.providers.ollama_provider import parse_model_output, resolve_ollama_model
 
 
 def test_parse_model_output_json_hashtag_list():
@@ -38,7 +38,7 @@ def test_ollama_provider_generate_unavailable(monkeypatch):
     monkeypatch.setattr(
         ollama_provider,
         "check_ollama_health",
-        lambda model, timeout_sec: ollama_provider.OllamaHealth(False, "connection refused", False),
+        lambda model, timeout_sec: ollama_provider.OllamaHealth(False, "connection refused", False, model, None),
     )
 
     try:
@@ -47,3 +47,32 @@ def test_ollama_provider_generate_unavailable(monkeypatch):
         assert "Switch Composition Mode to 'Template (Fallback)'" in str(exc)
     else:
         raise AssertionError("Expected OllamaProviderError")
+
+
+def test_resolve_ollama_model_prefers_exact_match():
+    result = resolve_ollama_model("llama3.1:8b", ["llama3.1:8b", "phi3:mini"])
+
+    assert result.selected_model == "llama3.1:8b"
+    assert result.used_fallback is False
+
+
+def test_resolve_ollama_model_falls_back_to_family_variant():
+    result = resolve_ollama_model("llama3.1:8b-instruct", ["llama3.1:8b", "phi3:mini"])
+
+    assert result.selected_model == "llama3.1:8b"
+    assert result.used_fallback is True
+    assert "same-family" in result.reason
+
+
+def test_resolve_ollama_model_falls_back_to_first_available():
+    result = resolve_ollama_model("llama3.1:8b", ["qwen2.5:7b", "phi3:mini"])
+
+    assert result.selected_model == "phi3:mini"
+    assert result.used_fallback is True
+
+
+def test_resolve_ollama_model_none_available():
+    result = resolve_ollama_model("llama3.1:8b", [])
+
+    assert result.selected_model is None
+    assert "No local Ollama models" in result.reason

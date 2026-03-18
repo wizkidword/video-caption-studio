@@ -91,11 +91,13 @@ def run_dependency_diagnostics() -> DependencyDiagnostics:
         ),
         DependencyStatus(
             key="ollama",
-            label=f"Ollama smart composition ({DEFAULT_OLLAMA_MODEL})",
-            installed=ollama_health.available and ollama_health.model_available,
+            label=f"Ollama smart composition (configured: {DEFAULT_OLLAMA_MODEL})",
+            installed=ollama_health.available and ollama_health.selected_model is not None,
             required_for_strict=False,
             detail=(
                 "Optional but recommended for Smart mode. "
+                f"Configured model: {ollama_health.configured_model}. "
+                f"Selected model: {ollama_health.selected_model or 'none'}. "
                 f"Status: {ollama_health.detail}"
             ),
             presence="system" if ollama_health.available else "missing",
@@ -125,7 +127,7 @@ def run_dependency_diagnostics() -> DependencyDiagnostics:
 
 
 def format_diagnostics_report(diagnostics: DependencyDiagnostics) -> str:
-    lines: List[str] = ["Dependency Diagnostics (v1.2.0)"]
+    lines: List[str] = ["Dependency Diagnostics (v1.2.1)"]
 
     for status in diagnostics.statuses:
         state = "PASS" if status.installed else "FAIL"
@@ -149,7 +151,9 @@ def format_diagnostics_report(diagnostics: DependencyDiagnostics) -> str:
     lines.append(f"- {diagnostics.audio_note}")
     lines.append(f"- {diagnostics.mode_note}")
     lines.append("- Smart mode is optional. If Ollama is unavailable, switch Composition Mode to Template (Fallback).")
-    lines.append("- Ollama quick setup: install -> `ollama serve` -> `ollama pull llama3.1:8b-instruct`.")
+    lines.append(f"- Configured smart model: {DEFAULT_OLLAMA_MODEL}.")
+    lines.append("- If configured model is missing, the app auto-selects a same-family local model, then any local model.")
+    lines.append(f"- Ollama quick setup: install -> `ollama serve` -> `ollama pull {DEFAULT_OLLAMA_MODEL}`.")
     lines.append("- After installing or rebuilding, reopen your terminal/app before running again.")
 
     return "\n".join(lines)

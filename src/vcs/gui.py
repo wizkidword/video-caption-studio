@@ -248,6 +248,8 @@ class VideoCaptionStudioApp:
                 )
             )
             self._log(f"Composition provider used: {COMPOSITION_MODES.get(provider_key, provider_key)}")
+            if provider_key == "ollama" and content.resolved_model:
+                self._log(f"Smart mode resolved Ollama model: {content.resolved_model}")
 
             self._set_text(self.title_text, content.title)
             self._set_text(self.caption_text, content.caption)

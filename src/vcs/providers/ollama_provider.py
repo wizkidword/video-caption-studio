@@ -18,14 +18,74 @@ class OllamaProviderError(Exception):
 
 
 @dataclass(frozen=True)
+class OllamaModelResolution:
+    configured_model: str
+    selected_model: str | None
+    available_models: tuple[str, ...]
+    used_fallback: bool
+    reason: str
+
+
+@dataclass(frozen=True)
 class OllamaHealth:
     available: bool
     detail: str
     model_available: bool
+    configured_model: str
+    selected_model: str | None
+
+
+def resolve_ollama_model(configured_model: str, available_models: Iterable[str]) -> OllamaModelResolution:
+    configured = (configured_model or DEFAULT_OLLAMA_MODEL).strip()
+    cleaned = sorted({str(model).strip() for model in available_models if str(model).strip()})
+
+    if not cleaned:
+        return OllamaModelResolution(
+            configured_model=configured,
+            selected_model=None,
+            available_models=tuple(),
+            used_fallback=False,
+            reason="No local Ollama models found.",
+        )
+
+    if configured in cleaned:
+        return OllamaModelResolution(
+            configured_model=configured,
+            selected_model=configured,
+            available_models=tuple(cleaned),
+            used_fallback=False,
+            reason="Configured model found.",
+        )
+
+    family_prefix = configured.split(":", 1)[0].strip()
+    family_candidates = [model for model in cleaned if model.startswith(f"{family_prefix}:")] if family_prefix else []
+    if family_candidates:
+        selected = family_candidates[0]
+        return OllamaModelResolution(
+            configured_model=configured,
+            selected_model=selected,
+            available_models=tuple(cleaned),
+            used_fallback=True,
+            reason=(
+                f"Configured model '{configured}' not found; using same-family model '{selected}'."
+            ),
+        )
+
+    selected = cleaned[0]
+    return OllamaModelResolution(
+        configured_model=configured,
+        selected_model=selected,
+        available_models=tuple(cleaned),
+        used_fallback=True,
+        reason=(
+            f"Configured model '{configured}' not found; using first local model '{selected}'."
+        ),
+    )
 
 
 def check_ollama_health(model: str = DEFAULT_OLLAMA_MODEL, timeout_sec: int = 3) -> OllamaHealth:
     base = "http://127.0.0.1:11434"
+    configured_model = (model or DEFAULT_OLLAMA_MODEL).strip()
     try:
         tags_resp = _post_json(
             f"{base}/api/tags",
@@ -34,18 +94,38 @@ def check_ollama_health(model: str = DEFAULT_OLLAMA_MODEL, timeout_sec: int = 3)
             method="GET",
         )
     except OllamaProviderError as exc:
-        return OllamaHealth(False, str(exc), False)
+        return OllamaHealth(False, str(exc), False, configured_model, None)
 
     models = tags_resp.get("models", []) if isinstance(tags_resp, dict) else []
-    names = {str(item.get("name", "")).strip() for item in models if isinstance(item, dict)}
-    has_model = model in names
-    if has_model:
-        return OllamaHealth(True, f"Ollama running. Model '{model}' is available.", True)
-    return OllamaHealth(
-        True,
-        f"Ollama running, but model '{model}' not found. Run: ollama pull {model}",
-        False,
+    names = [str(item.get("name", "")).strip() for item in models if isinstance(item, dict)]
+    resolution = resolve_ollama_model(configured_model=configured_model, available_models=names)
+    if not resolution.selected_model:
+        return OllamaHealth(
+            True,
+            (
+                "Ollama is running, but no local models are installed. "
+                f"Run: ollama pull {configured_model}"
+            ),
+            False,
+            configured_model,
+            None,
+        )
+
+    if not resolution.used_fallback:
+        return OllamaHealth(
+            True,
+            f"Ollama running. Using configured model '{resolution.selected_model}'.",
+            True,
+            configured_model,
+            resolution.selected_model,
+        )
+
+    guidance = (
+        f"Configured model '{configured_model}' was not found. "
+        f"Using '{resolution.selected_model}' from local models. "
+        f"To use the configured model, run: ollama pull {configured_model}"
     )
+    return OllamaHealth(True, guidance, False, configured_model, resolution.selected_model)
 
 
 class OllamaProvider:
@@ -73,10 +153,13 @@ class OllamaProvider:
                 "Smart mode requires local Ollama at http://127.0.0.1:11434. "
                 f"{health.detail} Switch Composition Mode to 'Template (Fallback)' or start Ollama."
             )
-        if not health.model_available:
+
+        resolved_model = health.selected_model
+        if not resolved_model:
             raise OllamaProviderError(
-                f"Smart mode model is unavailable: {health.detail} "
-                "Switch Composition Mode to 'Template (Fallback)' or pull the model."
+                "Smart mode could not find any local Ollama models. "
+                f"Configured model: '{health.configured_model}'. Run: ollama pull {health.configured_model} "
+                "or switch Composition Mode to 'Template (Fallback)'."
             )
 
         prompt = build_prompt(metadata, analysis, preset, self.creativity, self.brand_voice_notes)
@@ -84,7 +167,7 @@ class OllamaProvider:
             payload = _post_json(
                 "http://127.0.0.1:11434/api/generate",
                 payload={
-                    "model": self.model,
+                    "model": resolved_model,
                     "prompt": prompt,
                     "stream": False,
                     "options": {
@@ -104,7 +187,12 @@ class OllamaProvider:
             raise OllamaProviderError("Ollama returned an empty response.")
 
         parsed = parse_model_output(response_text, hashtag_count=preset.hashtag_count)
-        return GeneratedContent(title=parsed.title, caption=parsed.caption, hashtags=" ".join(parsed.hashtags))
+        return GeneratedContent(
+            title=parsed.title,
+            caption=parsed.caption,
+            hashtags=" ".join(parsed.hashtags),
+            resolved_model=resolved_model,
+        )
 
 
 def creativity_temperature(level: str) -> float:

@@ -13,6 +13,7 @@ class GeneratedContent:
     title: str
     caption: str
     hashtags: str
+    resolved_model: str | None = None
 
 
 class CaptionProvider(Protocol):

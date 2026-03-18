@@ -6,7 +6,7 @@ Current MVP targets Windows-friendly use and keeps the architecture clean for:
 - future **online AI providers** (provider-pluggable compose layer)
 - future **batch processing** (analysis/compose layers already decoupled from UI)
 
-## Features (v1.2.0)
+## Features (v1.2.1)
 
 - Local single-video workflow
 - Platform presets:
@@ -87,9 +87,9 @@ The script will:
 3. install requirements
 4. launch the app
 
-## v1.2.0 Smart Offline Composition + Strict Analysis
+## v1.2.1 Smart Offline Composition + Strict Analysis
 
-v1.2.0 adds genuinely smarter offline copy generation while keeping strict analysis and fallback safety.
+v1.2.1 adds genuinely smarter offline copy generation while keeping strict analysis and fallback safety.
 
 ### Smart mode requirements
 
@@ -103,13 +103,14 @@ winget install Ollama.Ollama
 ollama serve
 
 # pull default model used by app
-ollama pull llama3.1:8b-instruct
+ollama pull llama3.1:8b
 ```
 
 ### Behavior and fallback
 
 - Default composition mode is **Smart (Local LLM via Ollama)**.
-- If Ollama/model is unavailable, the app returns an actionable message and you can switch to:
+- If the configured Ollama model is missing, the app auto-resolves to a same-family local model when available (example: `llama3.1:*`), then any local model.
+- If Ollama has no local models at all (or Ollama is down), the app returns actionable guidance and you can switch to:
   - **Template (Fallback)**
 - Strict analysis rules are unchanged:
   - `metadata_source=ffprobe`
@@ -119,7 +120,7 @@ ollama pull llama3.1:8b-instruct
 
 Status log reports both analysis sources and composition provider used.
 
-## Quick setup troubleshooting (v1.2.0)
+## Quick setup troubleshooting (v1.2.1)
 
 In the app, click **Check Dependencies**.
 
@@ -127,11 +128,12 @@ You will see pass/fail status for:
 - `ffprobe` (from FFmpeg)
 - OpenCV (`opencv-python`)
 - `faster-whisper`
-- Ollama + default smart model (`llama3.1:8b-instruct`)
+- Ollama + default smart model (`llama3.1:8b`)
 
 The diagnostics panel also shows:
 - what is installed
 - what is missing
+- configured Ollama model + resolved selected model (when fallback is used)
 - what strict mode requires
 - audio assumption notes (strict transcript checks depend on ffprobe metadata)
 
@@ -142,7 +144,7 @@ If a dependency is missing, use one-click copy buttons for Windows install comma
 
 After installing, reopen your terminal/app so PATH/package changes are detected.
 
-### Transcript runtime troubleshooting (v1.2.0)
+### Transcript runtime troubleshooting (v1.2.1)
 
 If **Generate** fails strict mode while diagnostics show faster-whisper is installed, use **Test Transcript** on the same file.
 
@@ -166,7 +168,7 @@ Strict mode behavior:
 - If `ffprobe` confirms **no audio stream**, transcript is not required.
 - If audio is present/unknown and transcript runtime fails, strict mode fails with the specific transcript reason + details.
 
-## EXE vs source mode dependencies (v1.2.0)
+## EXE vs source mode dependencies (v1.2.1)
 
 The app now reports dependency presence as one of:
 - `bundled` (inside packaged EXE)
